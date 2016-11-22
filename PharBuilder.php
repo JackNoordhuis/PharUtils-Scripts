@@ -1,70 +1,94 @@
 <?php
 
 /*
-    PharBuilder by 64FF00 (Twitter: @64FF00)
+ * PharUtils — PharBuilder.php
+ *
+ *    __             _        __                    _ _           _
+ *    \ \  __ _  ___| | __ /\ \ \___   ___  _ __ __| | |__  _   _(_)___
+ *     \ \/ _` |/ __| |/ //  \/ / _ \ / _ \| '__/ _` | '_ \| | | | / __|
+ *  /\_/ / (_| | (__|   </ /\  / (_) | (_) | | | (_| | | | | |_| | \__ \
+ *  \___/ \__,_|\___|_|\_\_\ \/ \___/ \___/|_|  \__,_|_| |_|\__,_|_|___/
+ *
+ * Usage: <target directory> <filename> <stub>
+ * Example: YourFolder ExamplePhar.phar <?php 'echo "Hello World!"; __HALT_COMPILER();'
+ */
 
-      888  888    .d8888b.      d8888  8888888888 8888888888 .d8888b.   .d8888b.
-      888  888   d88P  Y88b    d8P888  888        888       d88P  Y88b d88P  Y88b
-    888888888888 888          d8P 888  888        888       888    888 888    888
-      888  888   888d888b.   d8P  888  8888888    8888888   888    888 888    888
-      888  888   888P "Y88b d88   888  888        888       888    888 888    888
-    888888888888 888    888 8888888888 888        888       888    888 888    888
-      888  888   Y88b  d88P       888  888        888       Y88b  d88P Y88b  d88P
-      888  888    "Y8888P"        888  888        888        "Y8888P"   "Y8888P"
-*/
+echo "\n--- PharUtils v0.0.1 by Jack Noordhuis — PharBuilder ---\n";
+echo "\nAttempting to construct Phar...\n\n";
 
-echo "--- PharBuilder by #64FF00 --- \n \n";
-
-if(!isset($argv[1]) || !is_dir($argv[1]))
-{
-    echo "[ERROR] Please specify a valid directory name. \n \n";
-
-    exit(1);
+if(!isset($argv[1]) and $argv[1] !== "") {
+	echo "[ERROR] No target directory specified!\n\n";
+	exit(1);
+} elseif(!is_dir($argv[1])) {
+	echo "[ERROR] Invalid target directory specified!\n\n";
+	var_dump($argv[1]);
+	exit(1);
+} else {
+	$targetPath = $argv[1];
 }
 
-$filePath = $argv[1] . ".phar";
+if(!isset($argv[2]) and $argv[2] !== "") {
+	echo "[WARNING] No custom name specified, using default file name...\n";
+	$filename = "YourPhar.phar";
+} else {
+	$filename = $argv[2];
+	if(preg_match('/[a-zA-Z0-9]\.phar/', $filename) !== true) {
+		$filename .= ".phar";
+	}
+}
 
-if(file_exists($filePath))
-    @unlink($filePath);
+if(!isset($argv[3]) and $argv[3] !== "") {
+	echo "[INFO] No custom stub provided, using default stub...\n";
+	$stub = '<?php echo "Hello, world!\nThis Phar archive was created using PharBuilder v0.0.1 by JackNoordhuis! 
+	https://github.com/JackNoordhuis/PharUtils";
+	__HALT_COMPILER();';
+} else {
+	$stub = $argv[3]; // No checks on the stub for this version :V
+}
 
-$phar = new Phar($filePath);
+$path = __DIR__ . DIRECTORY_SEPARATOR . $filename;
 
-$phar->startBuffering();
+if(is_file($path)) {
+	echo "[WARNING] Phar called '{$filename}' already exists! Over writing...\n";
+	@unlink($path);
+}
 
-echo "[64FF00] Setting custom Phar archive metadata... \n";
+echo "\n";
 
-$phar->setMetadata(
-    [
-        "name" => $argv[1],
-        "creationDate" => time()
-    ]
-);
+$start = microtime(true);
+$fileCount = 0;
 
-/*
- * DevTools: require("phar://". __FILE__ ."/src/DevTools/ConsoleScript.php");
- */
-$phar->setStub('<?php echo "Hello, world! \n This PHAR archive has been generated using PharBuilder by #64FF00! :D"; __HALT_COMPILER();');
+$phar = new \Phar($path);
+
+echo "[PharBuilder] Setting custom Phar archive metadata... \n";
+
+$phar->setMetadata(["name" => $argv[2], "creationDate" => time()]);
+
+$phar->setStub($stub);
 
 $phar->setSignatureAlgorithm(Phar::SHA512);
 
+$phar->startBuffering();
+
 /** @var \SplFileInfo $splFileInfo */
-foreach(new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($argv[1])) as $splFileInfo)
-{
-    $tempDirectory = str_replace($argv[1], '', $splFileInfo->getPathname());
-
-    if($splFileInfo->getFilename() === '.' || $splFileInfo->getFilename() === '..')
-        continue;
-
-    echo "[64FF00] Adding file: " . $splFileInfo->getPathname() . "\n";
-
-    $phar->addFile($splFileInfo->getPathname(), $tempDirectory);
+foreach(new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($targetPath)) as $file) {
+	$tempPath = ltrim(str_replace(["\\", $targetPath], ["/", ""], $file), "/");
+	if($tempPath{0} === "." or strpos($tempPath, "/.") !== false) continue;
+	$phar->addFile($file, $tempPath);
+	$fileCount++;
+	echo "[PharBuilder] Added file: " . $file . "\n";
 }
 
-echo "[64FF00] Compressing files... \n";
+foreach($phar as $file => $info){
+	/** @var \PharFileInfo $finfo */
+	if($info->getSize() > (1024 * 512)){
+		$info->compress(\Phar::GZ);
+	}
+}
 
-$phar->compressFiles(\Phar::GZ);
+$end = microtime(true);
 
-echo "[64FF00] Done! \n";
+echo "[PharBuilder] Done! Archived {$fileCount} files in " . round($end - $start, 3) . "s!\n";
 
 $phar->stopBuffering();
 
